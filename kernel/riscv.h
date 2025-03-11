@@ -1,4 +1,5 @@
 #ifndef __ASSEMBLER__
+#include "spinlock.h"
 
 // which hart (core) is this?
 static inline uint64
@@ -328,7 +329,11 @@ sfence_vma()
 }
 
 typedef uint64 pte_t;
-typedef uint64 *pagetable_t; // 512 PTEs
+typedef uint64 * pagetable_ptr;
+typedef struct {
+  uint64 * pagetable;
+  struct spinlock lock;
+} pagetable_t; // 512 PTEs
 
 #endif // __ASSEMBLER__
 

@@ -28,8 +28,14 @@ exec(char *path, char **argv)
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
-  pagetable_t pagetable = 0, oldpagetable;
-  struct proc *p = myproc();
+  pagetable_ptr pagetable = 0;
+  pagetable_ptr oldpagetable;
+  struct proc_thread p_t = mythread();
+  struct proc* p = p_t.p;
+  if (p_t.tid == 0)
+    panic("only main thread can exec");
+  
+  wait_all_thread_exit(p_t.p);
 
   begin_op();
 
@@ -72,19 +78,19 @@ exec(char *path, char **argv)
   end_op();
   ip = 0;
 
-  p = myproc();
+  p = mythread().p;
   uint64 oldsz = p->sz;
 
-  // Allocate two pages at the next page boundary.
-  // Make the first inaccessible as a stack guard.
-  // Use the second as the user stack.
+  // Allocate 5/4 pages at the next page boundary.
+  // Make the front 1/4 PGSIZE inaccessible as a stack guard.
+  // Use the 1/4 ~ 5/4 PGSIZE as the user stack.
   sz = PGROUNDUP(sz);
   uint64 sz1;
-  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE, PTE_W)) == 0)
+  if((sz1 = uvmalloc(pagetable, sz, sz + 5*PGSIZE, PTE_W)) == 0)
     goto bad;
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
-  sp = sz;
+  sp = sz + PGSIZE + PGSIZE/4;
   stackbase = sp - PGSIZE;
 
   // Push argument strings, prepare rest of stack in ustack.
@@ -112,7 +118,7 @@ exec(char *path, char **argv)
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
-  p->trapframe->a1 = sp;
+  p->tcb[0].trapframe->a1 = sp;
 
   // Save program name for debugging.
   for(last=s=path; *s; s++)
@@ -121,11 +127,11 @@ exec(char *path, char **argv)
   safestrcpy(p->name, last, sizeof(p->name));
     
   // Commit to the user image.
-  oldpagetable = p->pagetable;
-  p->pagetable = pagetable;
+  oldpagetable = p->pagetable.pagetable;
+  p->pagetable.pagetable = pagetable;
   p->sz = sz;
-  p->trapframe->epc = elf.entry;  // initial program counter = main
-  p->trapframe->sp = sp; // initial stack pointer
+  p->tcb[0].trapframe->epc = elf.entry;  // initial program counter = main
+  p->tcb[0].trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
@@ -145,7 +151,7 @@ exec(char *path, char **argv)
 // and the pages from va to va+sz must already be mapped.
 // Returns 0 on success, -1 on failure.
 static int
-loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz)
+loadseg(pagetable_ptr pagetable, uint64 va, struct inode *ip, uint offset, uint sz)
 {
   uint i, n;
   uint64 pa;
