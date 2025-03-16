@@ -136,3 +136,28 @@ sys_thread_create(void)
 
   return ret;
 }
+
+uint64
+sys_thread_join(void)
+{
+  int tid;
+  argint(0, &tid);
+  wait_thread_exit(tid);
+}
+
+
+uint64
+sys_thread_exit(void)
+{
+  struct proc_thread p_t = mythread();
+  struct thread_cb *th = &(p_t.p[p_t.tid]);
+  acquire(&(p_t.p->wait_thread_lock));
+  acquire(&(th->tlock));
+  if (th->state != T_RUNNING) {
+    panic("sys_thread_exit");
+  }
+  th->state = T_ZOMBIE;
+  release(&(th->tlock));
+  wakeup(th);
+  release(&(p_t.p->wait_thread_lock));
+}

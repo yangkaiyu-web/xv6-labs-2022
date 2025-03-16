@@ -32,7 +32,7 @@ exec(char *path, char **argv)
   pagetable_ptr oldpagetable;
   struct proc_thread p_t = mythread();
   struct proc* p = p_t.p;
-  if (p_t.tid == 0)
+  if (p_t.tid != 0)
     panic("only main thread can exec");
   
   wait_all_thread_exit(p_t.p);
@@ -86,17 +86,13 @@ exec(char *path, char **argv)
 
   uint64 oldsz = p->sz;
 
-  // Allocate 5/4 pages at the next page boundary.
-  // Make the front 1/4 PGSIZE inaccessible as a stack guard.
-  // Use the 1/4 ~ 5/4 PGSIZE as the user stack.
   sz = PGROUNDUP(sz);
   uint64 sz1;
-  if((sz1 = uvmalloc(pagetable, sz, sz + 5*PGSIZE, PTE_W)) == 0)
+  if((sz1 = uvmalloc(pagetable, sz, sz + 4*PGSIZE, PTE_W)) == 0)
     goto bad;
   sz = sz1;
-  p->tstack_seg = sz - 5*PGSIZE;
-  uvmclear(pagetable, sz-2*PGSIZE);
-  stackbase = sz - 5*PGSIZE + PGSIZE / 4;
+  p->tstack_seg = sz - 4*PGSIZE;
+  stackbase = p->tstack_seg;
   sp = stackbase + PGSIZE;
 
   // Push argument strings, prepare rest of stack in ustack.
@@ -137,11 +133,7 @@ exec(char *path, char **argv)
   p->pagetable.pagetable = pagetable;
   p->sz = sz;
   p->tcb[0].trapframe->epc = elf.entry;  // initial program counter = main
-
-  for (i=0;i<4;i++) {
-    p->tcb[i].trapframe->sp = sp;
-    sp += 5*PGSIZE/4;
-  }
+  p->tcb[0].trapframe->sp = sp;
   proc_freepagetable(oldpagetable, oldsz);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)

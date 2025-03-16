@@ -394,21 +394,9 @@ exit(int status)
   struct proc_thread p_t = mythread();
   struct proc* p = p_t.p;
 
-  acquire(&p->lock);
-  acquire(&(p->tcb[p_t.tid].tlock));
-  p->tcb[p_t.tid].state = T_ZOMBIE;
-  if (p->state != P_RUNNING) {
-    if (p->state != P_EXITING) {
-      panic("process should be running or exiting when calling exit");
-    }
-    release(&p->lock);
-    sched();
-    panic("zombie exit");
-  } else {
-    p->state = P_EXITING;
+  if (p_t.tid != 0) {
+    panic("only main thread can call exit");
   }
-  release(&(p->tcb[p_t.tid].tlock));
-  release(&p->lock);
 
   // there must be only one thread execute below code
 
@@ -818,9 +806,7 @@ wait_all_thread_exit(struct proc_thread p_t) {
 
   int all_exit = 0;
   acquire(&p->wait_thread_lock);
-  for (i = 0; i < 4; i++) {
-    if (i==p_t.tid) continue;
-    
+  for (i = 1; i < 4; i++) {
     struct thread_cb* t = &p->tcb[i];
     acquire(&(t->tlock));
     for(;;) {
@@ -835,6 +821,32 @@ wait_all_thread_exit(struct proc_thread p_t) {
     release(&(t->tlock));
   }
   release(&(p->wait_thread_lock));
+}
+
+void
+wait_thread_exit(int tid)
+{
+  struct proc_thread p_t = mythread();
+  struct proc* p = p_t.p;
+  struct thread_cb* th = &p->tcb[tid];
+
+  acquire(&p->wait_thread_lock);
+  acquire(&th->tlock);
+  for (;;) {
+    if (th->state == T_ZOMBIE) {
+      break;
+    } else {
+      if (th->state == T_SLEEPING) {
+        th->state = T_RUNNABLE;
+      }
+      release(&th->tlock);
+      sleep(th, &p->wait_thread_lock);
+      acquire(&th->tlock);
+    }
+  }
+  th->state == T_UNUSED;
+  release(&th->tlock);
+  release(&p->wait_thread_lock);
 }
 
 
@@ -855,14 +867,19 @@ new_thread(struct proc_thread p_t, uint64 func, uint64 args) {
 found:
   struct thread_cb *th = &(p->tcb[i]);
   th->state = T_USED;
+  release(&(th->tlock));
   th->chan = 0;
 
-  memset(&(p->tcb[i].context), 0, sizeof(p->tcb[i].context));
-  p->tcb[i].context.ra = (uint64)forkret;
-  p->tcb[i].context.sp = p->tcb[i].kstack + PGSIZE;
-  p->tcb[i].trapframe->epc = TRAMPOLINE + (userthread-trampoline);
-  p->tcb[i].trapframe->a0 = args;
-  p->tcb[i].trapframe->sp = p->tstack_seg + i*5*PGSIZE/4;
+  memset(&(th->context), 0, sizeof(th->context));
+  th->context.ra = (uint64)forkret;
+  th->context.sp = p->tcb[i].kstack + PGSIZE;
+  th->trapframe->epc = TRAMPOLINE + (userthread-trampoline);
+  th->trapframe->a0 = func;
+  th->trapframe->a1 = args;
+  th->trapframe->sp = p->tstack_seg + i*PGSIZE;
+  acquire(&(th->tlock));
+  th->state = T_RUNNABLE;
+  release(&(th->tlock));
 }
 
 

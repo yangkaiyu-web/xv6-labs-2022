@@ -103,6 +103,7 @@ struct cpu*     getmycpu(void);
 struct proc_thread    mythread();
 // can only be called in main thread(0)
 void            wait_all_thread_exit(struct proc*);
+void            wait_thread_exit(int);
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
