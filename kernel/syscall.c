@@ -11,11 +11,17 @@
 int
 fetchaddr(uint64 addr, uint64 *ip)
 {
-  struct proc *p = myproc();
-  if(addr >= p->sz || addr+sizeof(uint64) > p->sz) // both tests needed, in case of overflow
+  struct proc *p = mythread().p;
+  acquire(&(p->pagetable.lock));
+  if(addr >= p->sz || addr+sizeof(uint64) > p->sz) { // both tests needed, in case of overflow
+    release(&(p->pagetable.lock));
     return -1;
-  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
+  }
+  if(copyin(p->pagetable.pagetable, (char *)ip, addr, sizeof(*ip)) != 0) {
+    release(&(p->pagetable.lock));
     return -1;
+  }
+  release(&(p->pagetable.lock));
   return 0;
 }
 
@@ -24,8 +30,8 @@ fetchaddr(uint64 addr, uint64 *ip)
 int
 fetchstr(uint64 addr, char *buf, int max)
 {
-  struct proc *p = myproc();
-  if(copyinstr(p->pagetable, buf, addr, max) < 0)
+  struct proc *p = mythread().p;
+  if(copyinstr(p->pagetable.pagetable, buf, addr, max) < 0)
     return -1;
   return strlen(buf);
 }
@@ -33,20 +39,21 @@ fetchstr(uint64 addr, char *buf, int max)
 static uint64
 argraw(int n)
 {
-  struct proc *p = myproc();
+  struct proc_thread p_t = mythread();
+  struct thread_cb *th = &(p_t.p->tcb[p_t.tid]);
   switch (n) {
   case 0:
-    return p->trapframe->a0;
+    return th->trapframe->a0;
   case 1:
-    return p->trapframe->a1;
+    return th->trapframe->a1;
   case 2:
-    return p->trapframe->a2;
+    return th->trapframe->a2;
   case 3:
-    return p->trapframe->a3;
+    return th->trapframe->a3;
   case 4:
-    return p->trapframe->a4;
+    return th->trapframe->a4;
   case 5:
-    return p->trapframe->a5;
+    return th->trapframe->a5;
   }
   panic("argraw");
   return -1;
@@ -79,6 +86,12 @@ argstr(int n, char *buf, int max)
   return fetchstr(addr, buf, max);
 }
 
+void
+arguint64(int n, uint64 *ip)
+{
+  *ip = argraw(n);
+}
+
 // Prototypes for the functions that handle system calls.
 extern uint64 sys_fork(void);
 extern uint64 sys_exit(void);
@@ -103,6 +116,9 @@ extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_trace(void);
 extern uint64 sys_sysinfo(void);
+extern uint64 sys_thread_create(void);
+extern uint64 sys_thread_join(void);
+extern uint64 sys_thread_exit(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -130,6 +146,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace,
 [SYS_sysinfo] sys_sysinfo,
+[SYS_thread_create] sys_thread_create,
+[SYS_thread_join] sys_thread_join,
+[SYS_thread_exit] sys_thread_exit,
 };
 
 static char *syscall_name[] = {
@@ -155,27 +174,31 @@ static char *syscall_name[] = {
 [SYS_mkdir]   "mkdir",
 [SYS_close]   "close",
 [SYS_trace]   "trace",
+[SYS_thread_create] "sys_thread_create",
+[SYS_thread_join] "sys_thread_join",
+[SYS_thread_exit] "sys_thread_exit",
 };
 
 void
 syscall(void)
 {
   int num;
-  struct proc *p = myproc();
+  struct proc_thread p_t = mythread();
+  struct thread_cb *th = &(p_t.p->tcb[p_t.tid]);
 
-  num = p->trapframe->a7;
+  num = th->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
-    p->trapframe->a0 = syscalls[num]();
+    th->trapframe->a0 = syscalls[num]();
 
     // core code for syscall trace
-    if((1<<num) & p->mask){
-      printf("%d: syscall %s -> %d\n", p->pid, syscall_name[num], p->trapframe->a0);
+    if((1<<num) & p_t.p->mask){
+      printf("[pid] %d, [tid] %d: syscall %s -> %d\n", p_t.p->pid, p_t.tid, syscall_name[num], th->trapframe->a0);
     }
   } else {
-    printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
-    p->trapframe->a0 = -1;
+    printf("[pid] %d, %s, [tid] %d: unknown sys call %d\n",
+            p_t.p->pid, p_t.p->name, p_t.tid, num);
+    th->trapframe->a0 = -1;
   }
 }

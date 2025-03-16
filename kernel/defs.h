@@ -8,6 +8,8 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct proc_thread;
+typedef uint64 * pagetable_ptr;
 
 // bio.c
 void            binit(void);
@@ -93,6 +95,8 @@ pagetable_ptr   proc_pagetable(struct proc *);
 void            proc_freepagetable(pagetable_ptr, uint64);
 int             kill(int);
 int             killed(struct proc*);
+int             thread_killed(struct proc_thread p_t);
+int             new_thread(struct proc_thread p_t, uint64 func, uint64 args);
 void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
@@ -141,6 +145,7 @@ char*           strncpy(char*, const char*, int);
 // syscall.c
 void            argint(int, int*);
 int             argstr(int, char*, int);
+void            arguint64(int, uint64*);
 void            argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
@@ -169,7 +174,8 @@ int             mappages(pagetable_ptr, uint64, uint64, uint64, int);
 void            uvmfirst(pagetable_t *, uchar *, uint);
 uint64          uvmalloc(pagetable_ptr, uint64, uint64, int);
 uint64          uvmdealloc(pagetable_ptr, uint64, uint64);
-int             uvmcopy(pagetable_t, pagetable_t, uint64);
+// must acquired old pagetable's lock
+int             uvmcopy(pagetable_ptr, pagetable_ptr, uint64);
 void            uvmfree(pagetable_ptr, uint64);
 void            uvmunmap(pagetable_ptr, uint64, uint64, int);
 void            uvmclear(pagetable_ptr, uint64);
@@ -177,7 +183,7 @@ pte_t *         walk(pagetable_ptr, uint64, int);
 uint64          walkaddr(pagetable_ptr, uint64);
 int             copyout(pagetable_ptr, uint64, char *, uint64);
 int             copyin(pagetable_ptr, char *, uint64, uint64);
-int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             copyinstr(pagetable_ptr, char *, uint64, uint64);
 
 // plic.c
 void            plicinit(void);

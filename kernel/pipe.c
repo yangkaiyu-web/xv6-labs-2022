@@ -77,11 +77,12 @@ int
 pipewrite(struct pipe *pi, uint64 addr, int n)
 {
   int i = 0;
-  struct proc *pr = myproc();
+  struct proc_thread p_t = mythread();
+  struct proc *pr = p_t.p;
 
   acquire(&pi->lock);
   while(i < n){
-    if(pi->readopen == 0 || killed(pr)){
+    if(pi->readopen == 0 || thread_killed(p_t)){
       release(&pi->lock);
       return -1;
     }
@@ -90,8 +91,12 @@ pipewrite(struct pipe *pi, uint64 addr, int n)
       sleep(&pi->nwrite, &pi->lock);
     } else {
       char ch;
-      if(copyin(pr->pagetable, &ch, addr + i, 1) == -1)
+      acquire(&(pr->pagetable.lock));
+      if(copyin(pr->pagetable.pagetable, &ch, addr + i, 1) == -1) {
+        release(&(pr->pagetable.lock));
         break;
+      }
+      release(&(pr->pagetable.lock));
       pi->data[pi->nwrite++ % PIPESIZE] = ch;
       i++;
     }
@@ -106,12 +111,13 @@ int
 piperead(struct pipe *pi, uint64 addr, int n)
 {
   int i;
-  struct proc *pr = myproc();
+  struct proc_thread p_t = mythread();
+  struct proc *pr = p_t.p;
   char ch;
 
   acquire(&pi->lock);
   while(pi->nread == pi->nwrite && pi->writeopen){  //DOC: pipe-empty
-    if(killed(pr)){
+    if(thread_killed(p_t)){
       release(&pi->lock);
       return -1;
     }
@@ -121,8 +127,12 @@ piperead(struct pipe *pi, uint64 addr, int n)
     if(pi->nread == pi->nwrite)
       break;
     ch = pi->data[pi->nread++ % PIPESIZE];
-    if(copyout(pr->pagetable, addr + i, &ch, 1) == -1)
+    acquire(&(pr->pagetable.lock));
+    if(copyout(pr->pagetable.pagetable, addr + i, &ch, 1) == -1) {
+      release(&(pr->pagetable.lock));
       break;
+    }
+    release(&(pr->pagetable.lock));
   }
   wakeup(&pi->nwrite);  //DOC: piperead-wakeup
   release(&pi->lock);

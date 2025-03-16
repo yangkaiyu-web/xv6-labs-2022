@@ -1,3 +1,4 @@
+struct proc_thread;
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -80,8 +81,10 @@ struct trapframe {
   // 288
 };
 
-enum thrstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
-enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+// T_UNUSED: thread exited
+// ZOMBIE: proc exited
+enum thrstate { T_UNUSED, T_USED, T_SLEEPING, T_RUNNABLE, T_RUNNING, T_ZOMBIE };
+enum procstate { P_UNUSED, P_USED, P_RUNNING, P_EXITING, P_ZOMBIE };
 
 struct thread_cb {
   struct spinlock tlock;
@@ -115,10 +118,15 @@ struct proc {
   pagetable_t pagetable;       // User page table
   // pagetable lock must be held when use sz
   uint64 sz;                   // Size of process memory (bytes)
+
+  // used in sync more than one threads call exit
+  struct spinlock ofile_lock;
   struct file *ofile[NOFILE];  // Open files
+  
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   int mask;                    // for syscall trace
+  uint64 tstack_seg;           // for find thread stack
 
 };
 

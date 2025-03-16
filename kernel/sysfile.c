@@ -25,8 +25,13 @@ argfd(int n, int *pfd, struct file **pf)
   struct file *f;
 
   argint(n, &fd);
-  if(fd < 0 || fd >= NOFILE || (f=myproc()->ofile[fd]) == 0)
+  struct proc* p = mythread().p;
+  acquire(&(p->ofile_lock));
+  if(fd < 0 || fd >= NOFILE || (f=p->ofile[fd]) == 0) {
+    release(&(p->ofile_lock));
     return -1;
+  }
+  release(&(p->ofile_lock));
   if(pfd)
     *pfd = fd;
   if(pf)
@@ -40,14 +45,17 @@ static int
 fdalloc(struct file *f)
 {
   int fd;
-  struct proc *p = myproc();
+  struct proc *p = mythread().p;
 
+  acquire(&(p->ofile_lock));
   for(fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd] == 0){
       p->ofile[fd] = f;
+      release(&(p->ofile_lock));
       return fd;
     }
   }
+  release(&(p->ofile_lock));
   return -1;
 }
 
@@ -102,7 +110,10 @@ sys_close(void)
 
   if(argfd(0, &fd, &f) < 0)
     return -1;
-  myproc()->ofile[fd] = 0;
+  struct proc *p = mythread().p;
+  acquire(&(p->ofile_lock));
+  p->ofile[fd] = 0;
+  release(&(p->ofile_lock));
   fileclose(f);
   return 0;
 }
@@ -411,7 +422,7 @@ sys_chdir(void)
 {
   char path[MAXPATH];
   struct inode *ip;
-  struct proc *p = myproc();
+  struct proc *p = mythread().p;
   
   begin_op();
   if(argstr(0, path, MAXPATH) < 0 || (ip = namei(path)) == 0){
@@ -480,26 +491,34 @@ sys_pipe(void)
   uint64 fdarray; // user pointer to array of two integers
   struct file *rf, *wf;
   int fd0, fd1;
-  struct proc *p = myproc();
+  struct proc *p = mythread().p;
 
   argaddr(0, &fdarray);
   if(pipealloc(&rf, &wf) < 0)
     return -1;
   fd0 = -1;
   if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
-    if(fd0 >= 0)
+    if(fd0 >= 0) {
+      acquire(&(p->ofile_lock));
       p->ofile[fd0] = 0;
+      release(&(p->ofile_lock));
+    }
     fileclose(rf);
     fileclose(wf);
     return -1;
   }
-  if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
-     copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
+  acquire(&(p->pagetable.lock));
+  if(copyout(p->pagetable.pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
+     copyout(p->pagetable.pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
+    release(&(p->pagetable.lock));
+    acquire(&(p->ofile_lock));
     p->ofile[fd0] = 0;
     p->ofile[fd1] = 0;
+    release(&(p->ofile_lock));
     fileclose(rf);
     fileclose(wf);
     return -1;
   }
+  release(&(p->pagetable.lock));
   return 0;
 }

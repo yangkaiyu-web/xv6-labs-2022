@@ -87,15 +87,19 @@ fileclose(struct file *f)
 int
 filestat(struct file *f, uint64 addr)
 {
-  struct proc *p = myproc();
+  struct proc *p = mythread().p;
   struct stat st;
   
   if(f->type == FD_INODE || f->type == FD_DEVICE){
     ilock(f->ip);
     stati(f->ip, &st);
     iunlock(f->ip);
-    if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)
+    acquire(&(p->pagetable.lock));
+    if(copyout(p->pagetable.pagetable, addr, (char *)&st, sizeof(st)) < 0) {
+      release(&(p->pagetable.lock));
       return -1;
+    }
+    release(&(p->pagetable.lock));
     return 0;
   }
   return -1;

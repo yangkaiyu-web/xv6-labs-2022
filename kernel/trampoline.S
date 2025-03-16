@@ -8,7 +8,7 @@
         # to work when it switches page tables.
         # kernel.ld causes this code to start at 
         # a page boundary.
-        #
+        # note: userthread is a user mode program
 
 #include "riscv.h"
 #include "memlayout.h"
@@ -150,3 +150,13 @@ userret:
         # return to user mode and user pc.
         # usertrapret() set up sstatus and sepc.
         sret
+
+userthread:
+        addi	sp,sp,-16
+        mv	a5,a0
+        mv	a0,a1
+        jalr	a5
+        # ecall 26 is SYS_thread_exit
+        li a7,  26
+        ecall
+        ret

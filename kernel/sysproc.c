@@ -19,7 +19,7 @@ sys_exit(void)
 uint64
 sys_getpid(void)
 {
-  return myproc()->pid;
+  return mythread().p->pid;
 }
 
 uint64
@@ -43,7 +43,10 @@ sys_sbrk(void)
   int n;
 
   argint(0, &n);
-  addr = myproc()->sz;
+  struct proc* p = mythread().p;
+  acquire(&(p->pagetable.lock));
+  addr = p->sz;
+  release(&(p->pagetable.lock));
   if(growproc(n) < 0)
     return -1;
   return addr;
@@ -61,7 +64,7 @@ sys_sleep(void)
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
-    if(killed(myproc())){
+    if(killed(mythread().p)){
       release(&tickslock);
       return -1;
     }
@@ -98,7 +101,7 @@ sys_trace(void)
 {
   int n;
   argint(0, &n);
-  myproc()->mask = n;
+  mythread().p->mask = n;
   return 0;
 }
 
@@ -112,5 +115,24 @@ sys_sysinfo(void)
   uint64 addr;
   argaddr(0, &addr);
   // kernel cannot directly access user space. use copyout()
-  return copyout(myproc()->pagetable, addr, (char*)&info, sizeof(info));
+  struct proc *p = mythread().p;
+  acquire(&(p->pagetable.lock));
+  int ret = copyout(p->pagetable.pagetable, addr, (char*)&info, sizeof(info));
+  release(&(p->pagetable.lock));
+  return ret;
+}
+
+uint64
+sys_thread_create(void)
+{
+  uint64 addr_tid, addr_func, args;;
+  argaddr(0, &addr_tid);
+  arguint64(1, &addr_func);
+  arguint64(2, &args);
+
+  struct proc_thread p_t = mythread();
+  int tid = new_thread(p_t, addr_func, args);
+  int ret = copyout(p_t.p->pagetable.pagetable, addr_tid, (char*)&tid, sizeof(int));
+
+  return ret;
 }
