@@ -46,6 +46,7 @@ acquire(struct spinlock *lk)
 void
 release(struct spinlock *lk)
 {
+  printf("[%d] in release locked: %d, lk address: %ld", cpuid(), lk->locked, lk);
   if(!holding(lk))
     panic("release");
 

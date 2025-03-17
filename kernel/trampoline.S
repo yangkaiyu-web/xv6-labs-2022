@@ -151,10 +151,12 @@ userret:
         # usertrapret() set up sstatus and sepc.
         sret
 
+.global userthread
 userthread:
         addi	sp,sp,-16
         mv	a5,a0
         mv	a0,a1
+        # call func(args)
         jalr	a5
         # ecall 26 is SYS_thread_exit
         li a7,  26

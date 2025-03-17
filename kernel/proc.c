@@ -502,6 +502,7 @@ wait(uint64 addr)
 void
 scheduler(void)
 {
+  static
   struct proc *p;
   struct cpu *c = mycpu();
 
@@ -515,12 +516,14 @@ scheduler(void)
       int th_i;
       for(th_i = 0; th_i < 4; th_i++) {
         acquire(&(p->tcb[th_i].tlock));
+        printf("proc %d thread %d state: %d\n", p-proc, th_i, p->tcb[th_i].state);
         if(p->tcb[th_i].state == T_RUNNABLE) {
           // Switch to chosen process.  It is the process's job
           // to release its lock and then reacquire it
           // before jumping back to us.
           p->tcb[th_i].state = T_RUNNING;
           c->proc_thread = (struct proc_thread){p, th_i};
+
           swtch(&c->context, &p->tcb[th_i].context);
 
           // Process is done running for now.
@@ -528,6 +531,7 @@ scheduler(void)
           c->proc_thread.p = 0;
           c->proc_thread.tid = 0;
         }
+        printf("[%d] proc: %d, th: %d, locked: %d", cpuid(), p-proc, th_i, p->tcb[th_i].tlock.locked);
         release(&(p->tcb[th_i].tlock));
       }
     }
@@ -804,7 +808,6 @@ wait_all_thread_exit(struct proc_thread p_t) {
   int i;
   struct proc* p = p_t.p;
 
-  int all_exit = 0;
   acquire(&p->wait_thread_lock);
   for (i = 1; i < 4; i++) {
     struct thread_cb* t = &p->tcb[i];
@@ -844,7 +847,7 @@ wait_thread_exit(int tid)
       acquire(&th->tlock);
     }
   }
-  th->state == T_UNUSED;
+  th->state = T_UNUSED;
   release(&th->tlock);
   release(&p->wait_thread_lock);
 }
@@ -880,6 +883,7 @@ found:
   acquire(&(th->tlock));
   th->state = T_RUNNABLE;
   release(&(th->tlock));
+  return i;
 }
 
 

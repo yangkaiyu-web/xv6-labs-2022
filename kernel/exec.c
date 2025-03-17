@@ -35,7 +35,7 @@ exec(char *path, char **argv)
   if (p_t.tid != 0)
     panic("only main thread can exec");
   
-  wait_all_thread_exit(p_t.p);
+  wait_all_thread_exit(p_t);
   for (i=0;i<4;i++) {
     p->tcb[i].chan = 0;
     memset(&(p->tcb[i].context), 0, sizeof(p->tcb[i].context));
@@ -120,7 +120,7 @@ exec(char *path, char **argv)
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
-  p->tcb[0].trapframe->a1 = sp;
+  p->tcb[0].trapframe->a1 = sp; // *sp = argv[0]
 
   // Save program name for debugging.
   for(last=s=path; *s; s++)

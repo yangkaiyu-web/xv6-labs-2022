@@ -1,4 +1,10 @@
-struct proc_thread;
+// used to store current running thread on the cpu
+struct proc_thread {
+  struct proc* p;   // current proc running on the cpu
+  int tid;          // current thread running on the cpu
+};
+
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -128,10 +134,4 @@ struct proc {
   int mask;                    // for syscall trace
   uint64 tstack_seg;           // for find thread stack
 
-};
-
-// used to store current running thread on the cpu
-struct proc_thread {
-  struct proc* p;   // current proc running on the cpu
-  int tid;          // current thread running on the cpu
 };

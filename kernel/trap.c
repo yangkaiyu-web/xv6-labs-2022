@@ -154,7 +154,8 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && mythread().p != 0 && mythread().p->state == RUNNING)
+  struct proc_thread p_t = mythread();
+  if(which_dev == 2 && p_t.p != 0 && p_t.p->tcb[p_t.tid].state == T_RUNNING)
     yield();
 
   // the yield() may have caused some traps to occur,

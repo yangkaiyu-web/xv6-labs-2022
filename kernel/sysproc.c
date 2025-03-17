@@ -143,6 +143,8 @@ sys_thread_join(void)
   int tid;
   argint(0, &tid);
   wait_thread_exit(tid);
+
+  return 0;
 }
 
 
@@ -150,7 +152,7 @@ uint64
 sys_thread_exit(void)
 {
   struct proc_thread p_t = mythread();
-  struct thread_cb *th = &(p_t.p[p_t.tid]);
+  struct thread_cb *th = &(p_t.p->tcb[p_t.tid]);
   acquire(&(p_t.p->wait_thread_lock));
   acquire(&(th->tlock));
   if (th->state != T_RUNNING) {
@@ -160,4 +162,8 @@ sys_thread_exit(void)
   release(&(th->tlock));
   wakeup(th);
   release(&(p_t.p->wait_thread_lock));
+  sched();
+
+  // not reach
+  return 0;
 }
